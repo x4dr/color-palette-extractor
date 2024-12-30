@@ -38,7 +38,7 @@ This Python script extracts a color palette from an image and generates various 
 Run the script from the command line as follows:
 
 ```
-python color_palette_extractor.py path/to/your/image.jpg -n 6
+python3 color_palette_extractor.py path/to/your/image.jpg -n 6
 ```
 
 - `path/to/your/image.jpg`: Path to the input image file
