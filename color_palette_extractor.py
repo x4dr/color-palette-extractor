@@ -5,36 +5,18 @@
 Color Palette and Harmony Generator
 
 This script extracts a color palette from an image and generates various color harmonies.
-It creates a PDF report and a text file with the color information.
 
 Usage:
-1. Ensure all required libraries are installed (numpy, scikit-learn, Pillow, reportlab)
-2. Place the Inter-Bold.ttf and Inter-Regular.ttf fonts in the same directory as the script
-3. Run the script and follow the prompts to input an image file and number of colors
+Ensure all required libraries are installed (numpy, scikit-learn, Pillow, click)
+First Parameter is the image Path, second is the number of colors to extract
 """
 
 import numpy as np
 import colorsys
+import click
 from sklearn.cluster import KMeans
-from PIL import Image as PILImage
-from reportlab.lib.pagesizes import A4
-from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
-from reportlab.platypus import Image as ReportLabImage
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_LEFT, TA_CENTER
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.lib.units import inch
-import os
+from PIL import Image, ImageFont, ImageDraw, ImageChops, ImageOps
 
-# Register Inter-Bold font
-try:
-    pdfmetrics.registerFont(TTFont('Inter-Bold', 'Inter-Bold.ttf'))
-    pdfmetrics.registerFont(TTFont('Inter-Regular', 'Inter-Regular.ttf'))
-except:
-    print("Warning: Unable to register Inter fonts. The PDF may not display correctly.")
-    print("Make sure 'Inter-Bold.ttf' and 'Inter-Regular.ttf' are in the same directory as this script.")
 
 def rgb_to_cmyk(r, g, b):
     """Convert RGB to CMYK color space."""
@@ -56,7 +38,7 @@ def rgb_to_cmyk(r, g, b):
 def extract_color_palette(image_path, num_colors):
     """Extract a color palette from an image using KMeans clustering."""
     num_colors = min(num_colors, 12)  # Limit to a maximum of 12 colors
-    img = PILImage.open(image_path)
+    img = Image.open(image_path)
     
     # Calculate new dimensions
     max_dimension = 1000  # Maximum dimension for processing
@@ -65,7 +47,7 @@ def extract_color_palette(image_path, num_colors):
         scale_factor = max_dimension / max(width, height)
         new_width = int(width * scale_factor)
         new_height = int(height * scale_factor)
-        img = img.resize((new_width, new_height), PILImage.LANCZOS)
+        img = img.resize((new_width, new_height), Image.LANCZOS)
     
     # Convert image to RGB mode if it's not already
     if img.mode != 'RGB':
@@ -159,8 +141,8 @@ def get_harmonies(color_palette):
         # Tints
         tints = []
         for i in range(5):
-            tint_s = max(0, s - (s * (i / 4)))
-            tint_v = min(1, v + ((1 - v) * (i / 4)))
+            tint_s = max(0.0, float(s - (s * (i / 5))))
+            tint_v = min(1.0, v + ((1 - v) * (i / 5)))
             tint_rgb = colorsys.hsv_to_rgb(h, tint_s, tint_v)
             tints.append(rgb_to_hex(tuple(int(x*255) for x in tint_rgb)))
         harmonies["Tints"].append({f"Tint {i+1}": tint for i, tint in enumerate(tints)})
@@ -168,7 +150,7 @@ def get_harmonies(color_palette):
         # Shades
         shades = []
         for i in range(5):
-            shade_v = v * (1 - i / 4)
+            shade_v = v * (1 - i / 5)
             shade_rgb = colorsys.hsv_to_rgb(h, s, shade_v)
             shades.append(rgb_to_hex(tuple(int(x*255) for x in shade_rgb)))
         harmonies["Shades"].append({f"Shade {i+1}": shade for i, shade in enumerate(shades)})
@@ -182,97 +164,47 @@ def is_dark(hex_color):
     luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
     return luminance < 0.5
 
-def save_palette_to_pdf(color_palette, harmonies, filename="color_palette.pdf", image_filename=""):
-    """Save the color palette and harmonies to a PDF file with improved layout."""
-    doc = SimpleDocTemplate(filename, pagesize=A4, topMargin=0.5*inch, bottomMargin=0.5*inch)
-    elements = []
-    
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(name='Title', fontName='Inter-Bold', fontSize=18, leading=20, alignment=TA_LEFT, spaceAfter=10)
-    heading_style = ParagraphStyle(name='Heading2', fontName='Inter-Bold', fontSize=14, leading=16, alignment=TA_LEFT, spaceBefore=16, spaceAfter=8)
-    
-    title = f"Color Palette and Harmonies for {os.path.basename(image_filename)}"
-    elements.append(Paragraph(title, title_style))
-    elements.append(Spacer(1, 0.2*inch))
+def save_palette_to_png(color_palette, harmonies, output_file="color_palette.png", image_file=""):
+    # Load base image
+    base_img = Image.open(image_file).resize((300, 200))
+    font = ImageFont.load_default()
 
-    # Add the original image
-    img = PILImage.open(image_filename)
-    img_width, img_height = img.size
-    aspect = img_height / float(img_width)
-    
-    # Set the width to 3 inches, and calculate the height based on the aspect ratio
-    display_width = 3 * inch
-    display_height = display_width * aspect
+    # Create blank canvas
+    width = 1000
+    height = 600 + 500 * len(harmonies)
+    out_img = Image.new("RGB", (width, height), "white")
+    draw = ImageDraw.Draw(out_img)
 
-    elements.append(ReportLabImage(image_filename, width=display_width, height=display_height))
-    elements.append(Spacer(1, 0.2*inch))
+    # Paste original image
+    out_img.paste(base_img, (20, 20))
 
-    # Add color palette (in two rows)
-    elements.append(Paragraph("Original Color Palette", heading_style))
-    palette_data = [
-        [color[0] for color in color_palette[:6]],
-        [color[0] for color in color_palette[6:]]
-    ]
-    palette_table = Table(palette_data, colWidths=60, rowHeights=60)
-    
-    palette_style = TableStyle([
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('FONTNAME', (0, 0), (-1, -1), 'Inter-Regular'),
-        ('FONTSIZE', (0, 0), (-1, -1), 8),
-    ])
-    
-    for i, color in enumerate(color_palette):
-        row = 0 if i < 6 else 1
-        col = i % 6
-        hex_color = color[0]
-        palette_style.add('BACKGROUND', (col, row), (col, row), colors.HexColor(hex_color))
-        text_color = colors.white if is_dark(hex_color) else colors.black
-        palette_style.add('TEXTCOLOR', (col, row), (col, row), text_color)
-    
-    palette_table.setStyle(palette_style)
-    elements.append(palette_table)
+    # Draw palette
+    draw.text((20, 240), "Original Palette:", font=font, fill="black")
+    for i, (hex_color, _, _) in enumerate(color_palette):
+        x = 20 + i * 60
+        draw.rectangle([x, 270, x + 50, 320], fill=hex_color)
+        draw.text((x, 325), hex_color, font=font, fill="black")
 
-    # Add harmonies
-    harmony_pages = ["Original Color Palette"]  # Start with the palette page
-    for harmony_type, harmony_sets in harmonies.items():
-        # Add a page break before "Complementary Harmonies"
-        if harmony_type == "Complementary":
-            elements.append(PageBreak())
+    # Draw harmonies
+    y_start = 370
+    for name, harmony_sets in harmonies.items():
+        draw.text((20, y_start), f"{name} Harmony:", font=font, fill="black")
+        y_start += 30
+        for hset in harmony_sets:
+            for i, hex_color in enumerate(hset.values()):
+                x = 20 + i * 60
+                draw.rectangle([x, y_start, x + 50, y_start + 50], fill=hex_color)
+                draw.text((x, y_start + 55), hex_color, font=font, fill="black")
+            y_start += 80
 
-        elements.append(Paragraph(f"{harmony_type} Harmonies", heading_style))
-        harmony_pages.append(harmony_type)
-        for idx, harmony_set in enumerate(harmony_sets):
-            harmony_data = [list(harmony_set.values())]
-            harmony_table = Table(harmony_data, colWidths=60, rowHeights=60)
-            
-            harmony_style = TableStyle([
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                ('FONTNAME', (0, 0), (-1, -1), 'Inter-Regular'),
-                ('FONTSIZE', (0, 0), (-1, -1), 8),
-            ])
-            
-            for i, color_hex in enumerate(harmony_set.values()):
-                harmony_style.add('BACKGROUND', (i, 0), (i, 0), colors.HexColor(color_hex))
-                text_color = colors.white if is_dark(color_hex) else colors.black
-                harmony_style.add('TEXTCOLOR', (i, 0), (i, 0), text_color)
-            
-            harmony_table.setStyle(harmony_style)
-            elements.append(harmony_table)
+    bg = Image.new(out_img.mode, out_img.size, "white")
+    diff = ImageChops.difference(out_img, bg)
+    bbox = diff.getbbox()
+    if bbox:
+        out_img = out_img.crop(bbox)
+        out_img = ImageOps.expand(out_img, border=20, fill="white")
 
-        # Add page break after each harmony type, except for the last one
-        if harmony_type != list(harmonies.keys())[-1]:
-            elements.append(PageBreak())
-
-    def add_page_number(canvas, doc):
-        page_num = canvas.getPageNumber()
-        harmony_name = harmony_pages[min(page_num - 1, len(harmony_pages) - 1)]
-        text = f"Page {page_num} | Image: {os.path.basename(image_filename)} | {harmony_name}"
-        canvas.setFont("Inter-Regular", 8)
-        canvas.drawString(inch, 0.5*inch, text)
-
-    doc.build(elements, onFirstPage=add_page_number, onLaterPages=add_page_number)
+    out_img.save(output_file)
 
 def save_palette_and_harmonies(color_palette, harmonies, filename="color_info.txt"):
     """Save the color palette and harmonies to a text file."""
@@ -291,65 +223,63 @@ def save_palette_and_harmonies(color_palette, harmonies, filename="color_info.tx
                     f.write(f"  {color_name}: HEX: {color_hex}, RGB: {rgb}, CMYK: {cmyk}\n")
                 f.write("\n")
 
-def main():
+def print_palette_terminal(color_palette, harmonies):
+    def rgb_from_hex(h):
+        r = int(h[1:3], 16)
+        g = int(h[3:5], 16)
+        b = int(h[5:7], 16)
+        return r, g, b
+
+    def color_block(hex_color):
+        r, g, b = rgb_from_hex(hex_color)
+        return f"\033[48;2;{r};{g};{b}m  \033[0m"
+
+    print("\nOriginal Palette:")
+    for hex_color, _, _ in color_palette:
+        print(f"{color_block(hex_color)} {hex_color}", end='  ')
+    print("\n")
+
+    for name, harmony_sets in harmonies.items():
+        print(f"{name} Harmony:")
+        for hset in harmony_sets:
+            for hex_color in hset.values():
+                print(f"{color_block(hex_color)} {hex_color}", end='  ')
+            print()
+        print()
+
+
+@click.command()
+@click.argument('file', type=click.Path(exists=True))
+@click.argument('number', type=click.IntRange(1, 20))
+@click.option('--png', is_flag=True, default=False, help="Render to reference PNG (default is False)")
+def main(file, number, png):
     """Main function to run the color palette and harmony generator."""
-    print("Welcome to the Color Palette and Harmony Generator!")
-    print("This script extracts a color palette from an image and generates various color harmonies.")
 
-    # Get image file path
-    while True:
-        image_path = input("Enter the path to the image file: ").strip()
-        if os.path.isfile(image_path):
-            try:
-                with PILImage.open(image_path) as img:
-                    # Check if the image is in RGB mode
-                    if img.mode != 'RGB':
-                        print("Warning: The image is not in RGB mode. Converting to RGB.")
-                        img = img.convert('RGB')
-                break
-            except IOError:
-                print("Error: The file is not a valid image. Please try again.")
-        else:
-            print("Error: The specified file does not exist. Please try again.")
+    print("Extracting color palette...")
+    color_palette = extract_color_palette(file, number)
 
-    # Get number of colors
-    while True:
-        try:
-            num_colors = int(input("Enter the number of colors for the palette (1-12): "))
-            if 1 <= num_colors <= 12:
-                break
-            else:
-                print("Error: Please enter a number between 1 and 12.")
-        except ValueError:
-            print("Error: Please enter a valid number between 1 and 12.")
+    print("\nColor Palette:")
+    for color in color_palette:
+        print(f"HEX: {color[0]}, RGB: {color[1]}, CMYK: {color[2]}")
 
-    try:
-        print("Extracting color palette...")
-        color_palette = extract_color_palette(image_path, num_colors)
+    print("\nGenerating color harmonies...")
+    harmonies = get_harmonies(color_palette)
+    print("Color Harmonies:")
+    for harmony_type, harmony_sets in harmonies.items():
+        print(f"\n{harmony_type}:")
+        for harmony_set in harmony_sets:
+            for color_name, color_hex in harmony_set.items():
+                print(f"  {color_name}: {color_hex}")
+            print()
 
-        print("\nColor Palette:")
-        for color in color_palette:
-            print(f"HEX: {color[0]}, RGB: {color[1]}, CMYK: {color[2]}")
+    print("Saving harmonies")
+    save_palette_and_harmonies(color_palette, harmonies)
+    if png:
+        print("Saving to png")
+        save_palette_to_png(color_palette, harmonies, image_file=file)
+    print("\nColor palette and harmonies have been saved to 'color_info.txt' and 'color_palette.pdf'")
+    print_palette_terminal(color_palette, harmonies)
 
-        print("\nGenerating color harmonies...")
-        harmonies = get_harmonies(color_palette)
-        print("Color Harmonies:")
-        for harmony_type, harmony_sets in harmonies.items():
-            print(f"\n{harmony_type}:")
-            for harmony_set in harmony_sets:
-                for color_name, color_hex in harmony_set.items():
-                    print(f"  {color_name}: {color_hex}")
-                print()
-
-        print("Saving results to files...")
-        save_palette_and_harmonies(color_palette, harmonies)
-        save_palette_to_pdf(color_palette, harmonies, image_filename=image_path)
-        print("\nColor palette and harmonies have been saved to 'color_info.txt' and 'color_palette.pdf'")
-    except Exception as e:
-        print(f"An error occurred: {str(e)}")
-        print("Please check your input and try again.")
-        print("If the error persists, ensure you have all required libraries installed:")
-        print("numpy, scikit-learn, Pillow, and reportlab")
 
 if __name__ == "__main__":
     main()
