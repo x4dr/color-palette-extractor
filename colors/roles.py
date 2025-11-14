@@ -26,7 +26,7 @@ def hsv_distance_conical(hsv1, hsv2):
     x2 = s2 * math.cos(h2_rad)
     y2 = s2 * math.sin(h2_rad)
     z2 = v2
-    return math.sqrt((x1 - x2)**2 + (y1 - y2)**2 + (z1 - z2)**2)
+    return math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2 + (z1 - z2) ** 2)
 
 
 def score_dominant_cluster(cluster_sizes, idx):
@@ -39,7 +39,7 @@ def primaries(cluster_hsvs):
 
     def rgb_distance(rgb1, rgb2):
         max_dist = math.sqrt(255**2 * 3)
-        return math.sqrt(sum((c1 - c2)**2 for c1, c2 in zip(rgb1, rgb2))) / max_dist
+        return math.sqrt(sum((c1 - c2) ** 2 for c1, c2 in zip(rgb1, rgb2))) / max_dist
 
     def score_combo(combo):
         sats = [s for h, s, v in combo]
@@ -47,21 +47,34 @@ def primaries(cluster_hsvs):
         colors = [Color(*c) for c in combo]
 
         # distances
-        hue_dist = sum([hue_distance(colors[i].h, colors[(i+1)%len(colors)].h) for i in range(len(colors))])
-        rgb_dist = sum([rgb_distance(colors[i].rgb, colors[(i+1)%len(colors)].rgb) for i in range(len(colors))])
+        hue_dist = sum(
+            [
+                hue_distance(colors[i].h, colors[(i + 1) % len(colors)].h)
+                for i in range(len(colors))
+            ]
+        )
+        rgb_dist = sum(
+            [
+                rgb_distance(colors[i].rgb, colors[(i + 1) % len(colors)].rgb)
+                for i in range(len(colors))
+            ]
+        )
 
         # penalties
-        gray_penalty = sum([(1 - s)**2 for s in sats])
-        dark_penalty = sum([max(0, 0.2 - v)**2 for v in vals])
+        gray_penalty = sum([(1 - s) ** 2 for s in sats])
+        dark_penalty = sum([max(0, 0.2 - v) ** 2 for v in vals])
 
         # weighted sum
-        score = (sum(sats)/len(sats) + 0.5*hue_dist + 0.5*rgb_dist - 0.5* gray_penalty) #- 0.3 * dark_penalty
+        score = (
+            sum(sats) / len(sats) + 0.5 * hue_dist + 0.5 * rgb_dist - 0.5 * gray_penalty
+        )  # - 0.3 * dark_penalty
         # debug
         # print(hue_dist, rgb_dist, gray_penalty, dark_penalty, score)
         return score
 
     best_combo = max(itertools.combinations(cluster_hsvs, 3), key=score_combo)
     return (Color(*x) for x in best_combo)
+
 
 def score_neutral_cluster(cluster_hsvs, idx):
     return 1 - cluster_hsvs[idx][1]
@@ -102,7 +115,9 @@ def score_contrasting_cluster(cluster_hsvs, idx, dominant_idx):
 def get_roles(image, kmeans, colors) -> dict[str, Color]:
     labels, counts = np.unique(kmeans.labels_, return_counts=True)
     cluster_centers = kmeans.cluster_centers_.astype(int)
-    cluster_hsvs = np.array([colorsys.rgb_to_hsv(*rgb / 255) for rgb in cluster_centers])
+    cluster_hsvs = np.array(
+        [colorsys.rgb_to_hsv(*rgb / 255) for rgb in cluster_centers]
+    )
     color_sizes = {Color(*cluster_hsvs[i]).hex: counts[i] for i in range(len(counts))}
 
     roles_to_colors = {}
@@ -112,7 +127,9 @@ def get_roles(image, kmeans, colors) -> dict[str, Color]:
         return [s * 0.5 if i in assigned else s for i, s in enumerate(s)]
 
     # Dominant
-    dominant_scores = normalize([score_dominant_cluster(counts, i) for i in range(len(cluster_centers))])
+    dominant_scores = normalize(
+        [score_dominant_cluster(counts, i) for i in range(len(cluster_centers))]
+    )
     dominant_idx = np.argmax(dominant_scores)
     assigned.add(dominant_idx)
     roles_to_colors["dominant"] = Color(*cluster_hsvs[dominant_idx])
@@ -123,47 +140,92 @@ def get_roles(image, kmeans, colors) -> dict[str, Color]:
     roles_to_colors["supporting"] = Color(*cluster_hsvs[secondary_idx])
 
     # Accent
-    scores = penalize(normalize([score_accent_cluster(cluster_hsvs, i) for i in range(len(cluster_centers))]))
+    scores = penalize(
+        normalize(
+            [score_accent_cluster(cluster_hsvs, i) for i in range(len(cluster_centers))]
+        )
+    )
     idx = np.argmax(scores)
     assigned.add(idx)
     roles_to_colors["accent"] = Color(*cluster_hsvs[idx])
 
     # Neutral
-    scores = penalize(normalize([score_neutral_cluster(cluster_hsvs, i) for i in range(len(cluster_centers))]))
+    scores = penalize(
+        normalize(
+            [
+                score_neutral_cluster(cluster_hsvs, i)
+                for i in range(len(cluster_centers))
+            ]
+        )
+    )
     idx = np.argmax(scores)
     assigned.add(idx)
     roles_to_colors["neutral"] = Color(*cluster_hsvs[idx])
 
     # Outlier
-    scores = penalize(normalize([score_outlier_cluster(cluster_hsvs, i) for i in range(len(cluster_centers))]))
+    scores = penalize(
+        normalize(
+            [
+                score_outlier_cluster(cluster_hsvs, i)
+                for i in range(len(cluster_centers))
+            ]
+        )
+    )
     idx = np.argmax(scores)
     assigned.add(idx)
     roles_to_colors["outlier"] = Color(*cluster_hsvs[idx])
 
     # Highlight
-    scores = penalize(normalize([score_highlight_cluster(cluster_hsvs, i) for i in range(len(cluster_centers))]))
+    scores = penalize(
+        normalize(
+            [
+                score_highlight_cluster(cluster_hsvs, i)
+                for i in range(len(cluster_centers))
+            ]
+        )
+    )
     idx = np.argmax(scores)
     assigned.add(idx)
     roles_to_colors["highlight"] = Color(*cluster_hsvs[idx])
 
     # Shadow
-    scores = penalize(normalize([score_shadow_cluster(cluster_hsvs, i) for i in range(len(cluster_centers))]))
+    scores = penalize(
+        normalize(
+            [score_shadow_cluster(cluster_hsvs, i) for i in range(len(cluster_centers))]
+        )
+    )
     idx = np.argmax(scores)
     assigned.add(idx)
     roles_to_colors["shadow"] = Color(*cluster_hsvs[idx])
 
     # Midtone
-    scores = penalize(normalize([score_midtone_cluster(cluster_hsvs, i) for i in range(len(cluster_centers))]))
+    scores = penalize(
+        normalize(
+            [
+                score_midtone_cluster(cluster_hsvs, i)
+                for i in range(len(cluster_centers))
+            ]
+        )
+    )
     idx = np.argmax(scores)
     assigned.add(idx)
     roles_to_colors["midtone"] = Color(*cluster_hsvs[idx])
 
     # Contrasting
-    scores = penalize(normalize([score_contrasting_cluster(cluster_hsvs, i, dominant_idx)
-                                 for i in range(len(cluster_centers))]))
+    scores = penalize(
+        normalize(
+            [
+                score_contrasting_cluster(cluster_hsvs, i, dominant_idx)
+                for i in range(len(cluster_centers))
+            ]
+        )
+    )
     idx = np.argmax(scores)
     assigned.add(idx)
     roles_to_colors["contrasting"] = Color(*cluster_hsvs[idx])
-    roles_to_colors["primary"], roles_to_colors["secondary"], roles_to_colors["tertiary"] = sorted(
-        primaries(cluster_hsvs), key= lambda x: color_sizes[x.hex],reverse=True)
+    (
+        roles_to_colors["primary"],
+        roles_to_colors["secondary"],
+        roles_to_colors["tertiary"],
+    ) = sorted(primaries(cluster_hsvs), key=lambda x: color_sizes[x.hex], reverse=True)
     return roles_to_colors

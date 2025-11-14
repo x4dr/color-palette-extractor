@@ -8,25 +8,48 @@ import click
 from colors.Theme import Theme
 
 
-def process_file(theme:Theme, input_file, output_file):
+def process_file(theme: Theme, input_file, output_file):
     # Placeholder function that processes the file and writes the result to output_file
-    with open(input_file, 'r') as f:
+    with open(input_file, "r") as f:
         data = f.read()
     processed_data = theme.process_template(data)
     # print("processed:\n", processed_data)
-    with open(output_file, 'w') as f:
+    with open(output_file, "w") as f:
         f.write(processed_data)
     #  print(f"Processed: {input_file} -> {output_file}")
 
 
 @click.command()
-@click.option('--input', 'input_path', type=click.Path(exists=True), required=True, help="Input file or directory")
-@click.option('--colors', type=click.File('r'), required=False, help="Load colors from a JSON file")
-@click.option('--output', type=click.Path(exists=True, file_okay=False, writable=True), required=True,
-              help="Target directory for processed files")
-@click.option('--variables', "variables", type=str, required=False, help="variables for the template a=b;c=d;")
+@click.option(
+    "--input",
+    "input_path",
+    type=click.Path(exists=True),
+    required=True,
+    help="Input file or directory",
+)
+@click.option(
+    "--colors",
+    type=click.File("r"),
+    required=False,
+    help="Load colors from a JSON file",
+)
+@click.option(
+    "--output",
+    type=click.Path(exists=True, file_okay=False, writable=True),
+    required=True,
+    help="Target directory for processed files",
+)
+@click.option(
+    "--variables",
+    "variables",
+    type=str,
+    required=False,
+    help="variables for the template a=b;c=d;",
+)
 def main(input_path, colors, output, variables):
-    colors_data = json.load(colors if colors else Path("~/.cache/cpe/colors.json").expanduser().open())
+    colors_data = json.load(
+        colors if colors else Path("~/.cache/cpe/colors.json").expanduser().open()
+    )
     if not variables:
         variables = ""
     variables = {
@@ -51,6 +74,5 @@ def main(input_path, colors, output, variables):
         process_file(theme, input_path, output_file)
 
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

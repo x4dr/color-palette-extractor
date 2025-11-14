@@ -22,7 +22,7 @@ class Color:
     # === dynamic color space access ===
     def __getattr__(self, name):
         try:
-            return colour.convert(self._rgb, 'RGB', name.upper())
+            return colour.convert(self._rgb, "RGB", name.upper())
         except Exception:
             raise AttributeError(name)
 
@@ -55,7 +55,7 @@ class Color:
     @classmethod
     def from_oklch(cls, l, c, h):
         obj = cls.__new__(cls)
-        obj._rgb = np.array(colour.convert([l, c, h], 'OKLCH', 'RGB'))
+        obj._rgb = np.array(colour.convert([l, c, h], "OKLCH", "RGB"))
         return obj
 
     # === oklch operations ===
@@ -91,10 +91,10 @@ class Color:
         return self.hue_shift(0.5)
 
     def analogous(self, index=0):
-        return self.hue_shifts([-1/12, 1/12])[index % 2]
+        return self.hue_shifts([-1 / 12, 1 / 12])[index % 2]
 
     def triadic(self, index=0):
-        return self.hue_shifts([1/3, 2/3])[index % 2]
+        return self.hue_shifts([1 / 3, 2 / 3])[index % 2]
 
     def tetradic(self, index=0):
         return self.hue_shifts([0.25, 0.5, 0.75])[index % 3]
@@ -107,10 +107,10 @@ class Color:
         hh, ss, vv = self.hsv
         return Color(hh, ss, vv * (1 - t))
 
-    def lerp_target(self, target:Self, pos:float):
+    def lerp_target(self, target: Self, pos: float):
         sh, ss, sv = self.hsv
         th, ts, tv = target.hsv
         delta = ((th - sh + 1.5) % 1.0) - 0.5
-        return Color((sh + delta * pos) % 1.0,
-                     ss + (ts - ss) * pos,
-                     sv + (tv - sv) * pos)
+        return Color(
+            (sh + delta * pos) % 1.0, ss + (ts - ss) * pos, sv + (tv - sv) * pos
+        )

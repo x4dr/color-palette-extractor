@@ -1,14 +1,15 @@
 import re
 from typing import Callable
-
 from colors.Color import Color
 
 
 class Theme:
 
-    def __init__(self, colors, color_roles:dict[str, Color], variables:dict[str, str]):
+    def __init__(
+        self, colors, color_roles: dict[str, Color], variables: dict[str, str]
+    ):
         self.keys = {i: Color.from_hex(x) for i, x in enumerate(colors)}
-        self.roles = {x: Color.from_hex(y) for x,y in  color_roles.items()}
+        self.roles = {k: Color.from_hex(v) for k, v in color_roles.items()}
         self.variables = variables
 
     FUNCTIONS = {
@@ -24,56 +25,60 @@ class Theme:
         "VAL": Color.set_val,
         "SAT": Color.set_sat,
     }
+
     PROPERTIES = {
-        "HEX": Color.hex
+        "HEX": Color.hex,
     }
 
     def process_template(self, template: str) -> str:
-        def p(s: str) -> list:
-            return [float(x) for x in s.split(',') if x.strip()]
+
+        def parse_nums(s: str) -> list[float]:
+            return [float(x) for x in s.split(",") if x.strip()]
 
         def lam(func):
-            return lambda match: str(func(Color.from_rgb(*p(match.group(1))),*p(match.group(2))).rgb).strip("[]")
+            return lambda m: str(
+                func(
+                    Color.from_rgb(*parse_nums(m.group(1))), *parse_nums(m.group(2))
+                ).rgb
+            ).strip("[]")
 
         def prop(pr):
-            return lambda match: str(pr.__get__(Color.from_rgb(*p(match.group(1)))))
+            return lambda m: getattr(
+                Color.from_rgb(*parse_nums(m.group(1))), pr.fget.__name__
+            )
 
-        # A function to map regex patterns to replacement functions
         match_to_func: dict[re.Pattern, Callable] = {}
 
         for name, f in self.FUNCTIONS.items():
-            match_to_func[re.compile(r'(\d+, ?\d+, ?\d+)\.' + name + r'\((.*?)\)')] = lam(f)
+            pattern = rf"(\d+,\s*\d+,\s*\d+)\.{name}\((.*?)\)"
+            match_to_func[re.compile(pattern)] = lam(f)
 
         for name, f in self.PROPERTIES.items():
-            match_to_func[re.compile(r'(\d+, ?\d+, ?\d+)\.' + name + r'\b')] = prop(f)
-        def handle_key(match):
-            try:
-                return str(self.keys.get(int(match.group(1))).rgb).strip("[]")
-            except AttributeError:
-                return match.group(0)
-        def handle_role(match):
-            try:
-                return str(self.roles.get(match.group(1)).rgb).strip("[]")
-            except AttributeError:
-                return match.group(0)
+            pattern = rf"(\d+,\s*\d+,\s*\d+)\.{name}\b"
+            match_to_func[re.compile(pattern)] = prop(f)
 
+        # KEY(n)
+        def handle_key(m):
+            col = self.keys.get(int(m.group(1)))
+            return str(col.rgb).strip("[]") if col else m.group(0)
 
-        match_to_func[re.compile(r'ROLE\((\w+)\)')] = handle_role
-        match_to_func[re.compile(r'KEY\((\d+)\)')] = handle_key
-        #print_palette_terminal({"Roles": self.roles, "Colors": self.keys.values()},{})
+        # ROLE(name)
+        def handle_role(m):
+            col = self.roles.get(m.group(1))
+            return str(col.rgb).strip("[]") if col else m.group(0)
+
+        match_to_func[re.compile(r"ROLE\((\w+)\)")] = handle_role
+        match_to_func[re.compile(r"KEY\((\d+)\)")] = handle_key
+
         for k, v in self.variables.items():
-            template = re.sub(k.upper() + ".REPLACE", v, template)
-        change = True
-        while change:
-            change = False
+            template = re.sub(k.upper() + r"\.REPLACE", v, template)
+        changed = True
+        while changed:
+            changed = False
             for pattern, f in match_to_func.items():
-                try:
-                    new_template = pattern.sub(f, template)
+                new_t = pattern.sub(f, template)
+                if new_t != template:
+                    changed = True
+                    template = new_t
 
-                    if new_template != template:
-                        change = True
-                        template = new_template
-                except AttributeError:
-                    #print("failed:", pattern)
-                    pass # no substitution on error
         return template

@@ -46,11 +46,11 @@ def extract_color_palette(image_path, num_colors):
     labels, counts = np.unique(kmeans.labels_, return_counts=True)
     sorted_indices = np.argsort(-counts)  # Descending order of population
 
-    color_palette = {"Colors":[]}
+    color_palette = {"Colors": []}
     for rank, idx in enumerate(sorted_indices):
         color = Color.from_rgb(*kmeans.cluster_centers_[idx].astype(int))
         color_palette["Colors"].append(color)
-    color_palette["Roles"]=get_roles(img_array, kmeans, color_palette["Colors"])
+    color_palette["Roles"] = get_roles(img_array, kmeans, color_palette["Colors"])
 
     return color_palette
 
@@ -59,14 +59,17 @@ def get_harmonies(color_palette):
     """Generate common color harmonies based on the palette."""
     harmonies = {}
     for color in color_palette:
-        harmony = {"Complementary": [color.complementary(i) for i in range(1)],
-                   "Analogous": [color.analogous(i) for i in range(2)],
-                   "Triadic": [color.triadic(i) for i in range(2)],
-                   "Tetradic": [color.tetradic(i) for i in range(3)],
-                   "Tints": [color.tint(i/5) for i in range(1,5)],
-                   "Shades": [color.shade(i/5) for i in range(1,5)],}
+        harmony = {
+            "Complementary": [color.complementary(i) for i in range(1)],
+            "Analogous": [color.analogous(i) for i in range(2)],
+            "Triadic": [color.triadic(i) for i in range(2)],
+            "Tetradic": [color.tetradic(i) for i in range(3)],
+            "Tints": [color.tint(i / 5) for i in range(1, 5)],
+            "Shades": [color.shade(i / 5) for i in range(1, 5)],
+        }
         harmonies[color] = harmony
     return harmonies
+
 
 def save_palette_to_png(
     color_palette, harmonies, output_file="color_palette.png", image_file=""
@@ -115,7 +118,7 @@ def save_palette_to_png(
 
 def save_palette_and_harmonies(color_palette, harmonies, filename="color_info"):
     """Save the color palette and harmonies to a text file."""
-    with open(filename+".txt", "w") as f:
+    with open(filename + ".txt", "w") as f:
         f.write("Color Palette:\n")
         for color in color_palette:
             f.write(f"HEX: {color[0]}, RGB: {color[1]}\n")
@@ -126,12 +129,12 @@ def save_palette_and_harmonies(color_palette, harmonies, filename="color_info"):
             for harmony_type, colors in harmony.items():
                 f.write(f"\n{harmony_type}:\n")
                 if not isinstance(colors, list):
-                    colors= [colors]
+                    colors = [colors]
                 for c in colors:
                     f.write(f"{c.hex} ")
                 f.write("\n")
     # Save the data to a JSON file
-    with open(filename+".json", "w") as f:
+    with open(filename + ".json", "w") as f:
         json.dump(color_palette, f, indent=4, cls=ColorEncoder)
 
 
@@ -166,7 +169,11 @@ def print_palette_terminal(color_palette, harmonies):
 @click.command()
 @click.argument("number", type=click.IntRange(1, 20))
 @click.argument("file", type=click.Path(exists=True))
-@click.argument('output', type=click.Path(exists=True, file_okay=False, writable=True), required=False)
+@click.argument(
+    "output",
+    type=click.Path(exists=True, file_okay=False, writable=True),
+    required=False,
+)
 @click.option(
     "--png",
     is_flag=True,
@@ -174,13 +181,16 @@ def print_palette_terminal(color_palette, harmonies):
     help="Render to reference PNG (default is False)",
 )
 @click.option("-q", is_flag=True, default=False, help="Quiet")
-def main(file, number, png,q,output):
+def main(file, number, png, q, output):
     """Main function to run the color palette and harmony generator."""
 
     color_palette = extract_color_palette(file, number)
     output = output if output else Path("~/.cache/cpe").expanduser().as_posix()
-    harmonies= {"Colors": get_harmonies(color_palette["Colors"]), "Roles": get_harmonies(color_palette["Roles"].values())}
-    save_palette_and_harmonies(color_palette, harmonies, output +"/colors")
+    harmonies = {
+        "Colors": get_harmonies(color_palette["Colors"]),
+        "Roles": get_harmonies(color_palette["Roles"].values()),
+    }
+    save_palette_and_harmonies(color_palette, harmonies, output + "/colors")
     if png:
         save_palette_to_png(color_palette, harmonies, image_file=file)
     if not q:
