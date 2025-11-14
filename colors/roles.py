@@ -1,6 +1,5 @@
 import colorsys
 import itertools
-from collections import Counter
 
 import math
 import numpy as np
@@ -36,19 +35,33 @@ def score_dominant_cluster(cluster_sizes, idx):
 
 def primaries(cluster_hsvs):
     def hue_distance(h1, h2):
-        return min(abs(h1 - h2), 1 - abs(h1 - h2))
+        return min(abs(h1 - h2), 1 - abs(h1 - h2))  # h in 0..1
 
     def rgb_distance(rgb1, rgb2):
-        return math.sqrt(sum((c1 - c2) ** 2 for c1, c2 in zip(rgb1, rgb2)))
+        max_dist = math.sqrt(255**2 * 3)
+        return math.sqrt(sum((c1 - c2)**2 for c1, c2 in zip(rgb1, rgb2))) / max_dist
 
     def score_combo(combo):
         sats = [s for h, s, v in combo]
+        vals = [v for h, s, v in combo]
         colors = [Color(*c) for c in combo]
-        hue_dist = sum([hue_distance(colors[i].h , colors[(i+1)%len(colors)].h) for i in range(len(colors))])
-        rgb_dist = sum([rgb_distance(colors[i].rgb , colors[(i+1)%len(colors)].rgb) for i in range(len(colors))])
 
-        return sum(sats)/2 + hue_dist + rgb_dist
-    return (Color(*x) for x in max(itertools.combinations(cluster_hsvs, 3), key=score_combo))
+        # distances
+        hue_dist = sum([hue_distance(colors[i].h, colors[(i+1)%len(colors)].h) for i in range(len(colors))])
+        rgb_dist = sum([rgb_distance(colors[i].rgb, colors[(i+1)%len(colors)].rgb) for i in range(len(colors))])
+
+        # penalties
+        gray_penalty = sum([(1 - s)**2 for s in sats])
+        dark_penalty = sum([max(0, 0.2 - v)**2 for v in vals])
+
+        # weighted sum
+        score = (sum(sats)/len(sats) + 0.5*hue_dist + 0.5*rgb_dist - 0.5* gray_penalty) #- 0.3 * dark_penalty
+        # debug
+        # print(hue_dist, rgb_dist, gray_penalty, dark_penalty, score)
+        return score
+
+    best_combo = max(itertools.combinations(cluster_hsvs, 3), key=score_combo)
+    return (Color(*x) for x in best_combo)
 
 def score_neutral_cluster(cluster_hsvs, idx):
     return 1 - cluster_hsvs[idx][1]
@@ -86,7 +99,7 @@ def score_contrasting_cluster(cluster_hsvs, idx, dominant_idx):
     return hue_diff + value_diff
 
 
-def get_roles(  image, kmeans, colors) -> dict[str, str]:
+def get_roles(image, kmeans, colors) -> dict[str, Color]:
     labels, counts = np.unique(kmeans.labels_, return_counts=True)
     cluster_centers = kmeans.cluster_centers_.astype(int)
     cluster_hsvs = np.array([colorsys.rgb_to_hsv(*rgb / 255) for rgb in cluster_centers])

@@ -1,5 +1,9 @@
-import colorsys
 import json
+from typing import Self
+
+import numpy as np
+import colour
+
 
 class ColorEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -7,79 +11,106 @@ class ColorEncoder(json.JSONEncoder):
             return str(obj)
         return super().default(obj)
 
+
 class Color:
     def __init__(self, h, s, v):
-        self.h = h
-        self.s = s
-        self.v = v
-    def __str__(self):
-        return self.hex
+        self._rgb = np.array(colour.models.HSV_to_RGB(np.array([h, s, v], float)))
 
+    def __str__(self):
+        return colour.notation.RGB_to_HEX(self._rgb)
+
+    # === dynamic color space access ===
+    def __getattr__(self, name):
+        try:
+            return colour.convert(self._rgb, 'RGB', name.upper())
+        except Exception:
+            raise AttributeError(name)
+
+    # === base hsv ===
     @property
     def hsv(self):
-        return self.h, self.s, self.v
+        return tuple(map(float, colour.models.RGB_to_HSV(self._rgb)))
 
     @property
     def hex(self):
-        return self.hsv_to_hex(self.h, self.s, self.v)
+        return colour.notation.RGB_to_HEX(self._rgb)
 
     @property
     def rgb(self):
-        return [int(x * 255) for x in colorsys.hsv_to_rgb(self.h, self.s, self.v)]
+        return (self._rgb * 255).astype(int).tolist()
 
+    # === constructors ===
     @classmethod
     def from_rgb(cls, r, g, b):
-        return cls(*colorsys.rgb_to_hsv(r/255, g/255, b/255))
+        obj = cls.__new__(cls)
+        obj._rgb = np.array([r, g, b], float) / 255
+        return obj
 
     @classmethod
     def from_hex(cls, hex_color):
-        return cls.from_rgb(*cls.hex_to_rgb(hex_color))
+        obj = cls.__new__(cls)
+        obj._rgb = np.array(colour.notation.HEX_to_RGB(hex_color))
+        return obj
 
-    @staticmethod
-    def hex_to_rgb(h):
-        try:
-            return tuple(int(h[i:i+2], 16) for i in (1, 3, 5))
-        except ValueError:
-            raise ValueError("Invalid hex color format", h)
+    @classmethod
+    def from_oklch(cls, l, c, h):
+        obj = cls.__new__(cls)
+        obj._rgb = np.array(colour.convert([l, c, h], 'OKLCH', 'RGB'))
+        return obj
 
-    @staticmethod
-    def hsv_to_hex(h, s, v):
-        if not all(0 <= x <= 1 for x in (h, s, v)):
-            raise ValueError(h, s, v)
-        return f"#{''.join(f'{int(c * 255):02x}' for c in colorsys.hsv_to_rgb(h, s, v))}"
+    # === oklch operations ===
+    def set_lightness(self, l):
+        lch = self.oklch
+        return Color.from_oklch(l, lch[1], lch[2])
 
+    def set_chroma(self, c):
+        lch = self.oklch
+        return Color.from_oklch(lch[0], c, lch[2])
+
+    # === hsv-style ops ===
+    def set_hue(self, h):
+        hh, ss, vv = self.hsv
+        return Color(h, ss, vv)
+
+    def set_sat(self, s):
+        hh, ss, vv = self.hsv
+        return Color(hh, s, vv)
+
+    def set_val(self, v):
+        hh, ss, vv = self.hsv
+        return Color(hh, ss, v)
 
     def hue_shift(self, delta):
-        return Color((self.h + delta) % 1, self.s, self.v)
+        hh, ss, vv = self.hsv
+        return Color((hh + delta) % 1.0, ss, vv)
 
     def hue_shifts(self, deltas):
-        return [Color((self.h + d) % 1, self.s, self.v) for d in deltas]
+        return [self.hue_shift(d) for d in deltas]
 
-    def complementary(self, index= 0):
-        return self.hue_shifts([-0.5])[0]
+    def complementary(self):
+        return self.hue_shift(0.5)
 
-    def analogous(self, index= 0):
-        return self.hue_shifts([-1 / 12, 1 / 12])[int(index%2)]
+    def analogous(self, index=0):
+        return self.hue_shifts([-1/12, 1/12])[index % 2]
 
-    def triadic(self,index= 0):
-        return self.hue_shifts([1 / 3, 2 / 3])[int(index%2)]
+    def triadic(self, index=0):
+        return self.hue_shifts([1/3, 2/3])[index % 2]
 
-    def tetradic(self,index= 0):
-        return self.hue_shifts([0.25, 0.5, 0.75])[int(index%3)]
+    def tetradic(self, index=0):
+        return self.hue_shifts([0.25, 0.5, 0.75])[index % 3]
 
-    def tint(self, t: float):
-        s = self.s + (1 - self.s) * t
-        v = self.v + (1 - self.v) * t
-        return Color(self.h, s, v)
-    def shade(self, t: float):
-        return Color(self.h, self.s, self.v * (1 - t))
+    def tint(self, t):
+        hh, ss, vv = self.hsv
+        return Color(hh, ss + (1 - ss) * t, vv + (1 - vv) * t)
 
-    def lerp_target(self, target, pos):
-        return self.lerp(target.h,target.s,target.v, pos)
+    def shade(self, t):
+        hh, ss, vv = self.hsv
+        return Color(hh, ss, vv * (1 - t))
 
-    def lerp(self, h, s, v, pos):
-        delta = ((h - self.h + 1.5) % 1.0) - 0.5
-        h_new = (self.h + delta * pos) % 1.0
-        s_new = self.s + (s - self.s) * pos
-        v_new = self.v + (v - self.v) * pos
-        return Color(h_new, s_new, v_new)
+    def lerp_target(self, target:Self, pos:float):
+        sh, ss, sv = self.hsv
+        th, ts, tv = target.hsv
+        delta = ((th - sh + 1.5) % 1.0) - 0.5
+        return Color((sh + delta * pos) % 1.0,
+                     ss + (ts - ss) * pos,
+                     sv + (tv - sv) * pos)

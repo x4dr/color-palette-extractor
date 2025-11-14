@@ -2,15 +2,10 @@
 # -*- coding: utf-8 -*-
 
 """
-Color Palette and Harmony Generator
-
-This script extracts a color palette from an image and generates various color harmonies.
-
-Usage:
-Ensure all required libraries are installed (numpy, scikit-learn, Pillow, click)
-First Parameter is the image Path, second is the number of colors to extract
+Color Palette Extractor
 """
 import json
+from pathlib import Path
 
 import click
 import numpy as np
@@ -72,15 +67,6 @@ def get_harmonies(color_palette):
                    "Shades": [color.shade(i/5) for i in range(1,5)],}
         harmonies[color] = harmony
     return harmonies
-
-
-def is_dark(hex_color):
-    """Determine if a color is dark based on its luminance."""
-    hex_color = hex_color.lstrip("#")
-    r, g, b = tuple(int(hex_color[i : i + 2], 16) for i in (0, 2, 4))
-    luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-    return luminance < 0.5
-
 
 def save_palette_to_png(
     color_palette, harmonies, output_file="color_palette.png", image_file=""
@@ -180,7 +166,7 @@ def print_palette_terminal(color_palette, harmonies):
 @click.command()
 @click.argument("number", type=click.IntRange(1, 20))
 @click.argument("file", type=click.Path(exists=True))
-@click.argument('output', type=click.Path(exists=True, file_okay=False, writable=True), required=True)
+@click.argument('output', type=click.Path(exists=True, file_okay=False, writable=True), required=False)
 @click.option(
     "--png",
     is_flag=True,
@@ -192,6 +178,7 @@ def main(file, number, png,q,output):
     """Main function to run the color palette and harmony generator."""
 
     color_palette = extract_color_palette(file, number)
+    output = output if output else Path("~/.cache/cpe").expanduser().as_posix()
     harmonies= {"Colors": get_harmonies(color_palette["Colors"]), "Roles": get_harmonies(color_palette["Roles"].values())}
     save_palette_and_harmonies(color_palette, harmonies, output +"/colors")
     if png:
